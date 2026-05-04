@@ -34,11 +34,7 @@ jobs:
         run: playwright install chromium --with-deps
 
       - name: 🚦 Run smoke suite
-        run: |
-          pytest tests/smoke/ -v \
-            -m smoke \
-            --html=reports/smoke-${{ matrix.os }}.html \
-            --self-contained-html
+        run: pytest tests/smoke/ -v -m smoke --html=reports/smoke-${{ matrix.os }}.html --self-contained-html
         env:
           HEADLESS: "true"
           STANDARD_USER: ${{ secrets.STANDARD_USER || 'standard_user' }}
