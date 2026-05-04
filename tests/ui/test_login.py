@@ -1,5 +1,4 @@
-"""UI Login tests — bind BDD scenarios."""
-import pytest
 from pytest_bdd import scenarios
+from steps.ui.login_steps import *
 
-scenarios("../../features/login.feature")
+scenarios("login.feature")

@@ -1,5 +1,4 @@
-"""API Posts tests — bind BDD scenarios."""
-import pytest
 from pytest_bdd import scenarios
+from steps.api.posts_steps import *
 
-scenarios("../../features/api/posts_api.feature")
+scenarios("api/posts_api.feature")

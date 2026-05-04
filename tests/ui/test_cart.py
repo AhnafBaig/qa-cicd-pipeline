@@ -1,5 +1,4 @@
-"""UI Cart tests — bind BDD scenarios."""
-import pytest
 from pytest_bdd import scenarios
+from steps.ui.cart_steps import *
 
-scenarios("../../features/cart.feature")
+scenarios("cart.feature")

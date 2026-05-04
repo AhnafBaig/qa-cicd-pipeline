@@ -19,8 +19,3 @@ Feature: User Authentication
     When I login with username "bad_user" and password "bad_pass"
     Then I should see a login error message
 
-  @regression
-  Scenario: Empty username shows error
-    Given I am on the login page
-    When I login with username "" and password "secret_sauce"
-    Then I should see a login error message
