@@ -1,6 +1,6 @@
 # QA CI/CD Pipeline
 
-A multi-stage CI/CD test automation pipeline configured for both **GitHub Actions** and **Azure DevOps**, with smoke testing, full regression, PR merge gating, and Docker support.
+A multi-stage CI/CD test automation pipeline configured for both **GitHub Actions** and **Azure DevOps**, with smoke testing, full regression, PR merge gating,  and Docker support.
 
 [![Smoke Tests](https://github.com/AhnafBaig/qa-cicd-pipeline/actions/workflows/smoke.yml/badge.svg)](https://github.com/AhnafBaig/qa-cicd-pipeline/actions/workflows/smoke.yml)
 [![Regression Suite](https://github.com/AhnafBaig/qa-cicd-pipeline/actions/workflows/regression.yml/badge.svg)](https://github.com/AhnafBaig/qa-cicd-pipeline/actions/workflows/regression.yml)
