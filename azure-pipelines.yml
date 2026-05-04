@@ -1,0 +1,165 @@
+# ============================================================================
+# Azure DevOps Pipeline — QA CI/CD Pipeline
+# ============================================================================
+# This mirrors the GitHub Actions setup and demonstrates dual-pipeline
+# configuration — a key skill for enterprise QA roles.
+#
+# HOW TO USE:
+#   1. Push this repo to an Azure DevOps project
+#   2. Go to Pipelines → New Pipeline → select this file
+#   3. Add pipeline variables: STANDARD_USER, PASSWORD (mark as secret)
+# ============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+      - feature/*
+
+pr:
+  branches:
+    include:
+      - main
+
+schedules:
+  - cron: "0 2 * * *"
+    displayName: Nightly Full Regression
+    branches:
+      include:
+        - main
+    always: true
+
+# ── Variable groups ──────────────────────────────────────────────────────────
+variables:
+  pythonVersion: "3.12"
+  UI_BASE_URL: "https://www.saucedemo.com"
+  API_BASE_URL: "https://jsonplaceholder.typicode.com"
+  HEADLESS: "true"
+  # STANDARD_USER and PASSWORD come from a pipeline secret variable group
+  # Set these under Pipelines → Library → Variable Groups → qa-credentials
+
+# ── Stage 1: Smoke ──────────────────────────────────────────────────────────
+stages:
+  - stage: Smoke
+    displayName: 🚦 Smoke Tests
+    condition: always()
+
+    jobs:
+      - job: SmokeTests
+        displayName: Run Smoke Suite
+        pool:
+          vmImage: ubuntu-latest
+
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+            displayName: Set up Python
+
+          - script: pip install -r requirements.txt
+            displayName: Install dependencies
+
+          - script: playwright install chromium --with-deps
+            displayName: Install Playwright browsers
+
+          - script: |
+              pytest tests/smoke/ -v \
+                -m smoke \
+                --html=$(Build.ArtifactStagingDirectory)/smoke-report.html \
+                --self-contained-html
+            displayName: Run smoke tests
+            env:
+              HEADLESS: $(HEADLESS)
+              STANDARD_USER: $(STANDARD_USER)
+              PASSWORD: $(PASSWORD)
+              UI_BASE_URL: $(UI_BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)/smoke-report.html
+              artifactName: SmokeReport
+            displayName: Publish smoke report
+
+  # ── Stage 2: API Regression ────────────────────────────────────────────────
+  - stage: APIRegression
+    displayName: 🌐 API Regression
+    dependsOn: Smoke
+    condition: succeeded()
+
+    jobs:
+      - job: APITests
+        displayName: API Test Suite
+        pool:
+          vmImage: ubuntu-latest
+
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: pip install -r requirements.txt
+            displayName: Install dependencies
+
+          - script: |
+              pytest tests/api/ -v \
+                --html=$(Build.ArtifactStagingDirectory)/api-report.html \
+                --self-contained-html \
+                -n auto
+            displayName: Run API tests
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)/api-report.html
+              artifactName: APIReport
+
+  # ── Stage 3: UI Regression ────────────────────────────────────────────────
+  - stage: UIRegression
+    displayName: 🖥️ UI Regression
+    dependsOn: APIRegression
+    condition: succeeded()
+
+    jobs:
+      - job: UITests
+        displayName: UI Test Suite
+        pool:
+          vmImage: ubuntu-latest
+
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: $(pythonVersion)
+
+          - script: pip install -r requirements.txt
+            displayName: Install dependencies
+
+          - script: playwright install chromium --with-deps
+            displayName: Install Playwright browsers
+
+          - script: |
+              pytest tests/ui/ -v \
+                --html=$(Build.ArtifactStagingDirectory)/ui-report.html \
+                --self-contained-html
+            displayName: Run UI tests
+            env:
+              HEADLESS: $(HEADLESS)
+              STANDARD_USER: $(STANDARD_USER)
+              PASSWORD: $(PASSWORD)
+              UI_BASE_URL: $(UI_BASE_URL)
+
+          - task: PublishBuildArtifacts@1
+            condition: always()
+            inputs:
+              pathToPublish: $(Build.ArtifactStagingDirectory)/ui-report.html
+              artifactName: UIReport
+
+          - task: PublishBuildArtifacts@1
+            condition: failed()
+            inputs:
+              pathToPublish: screenshots/
+              artifactName: FailureScreenshots

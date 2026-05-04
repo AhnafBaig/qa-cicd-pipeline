@@ -1,0 +1,45 @@
+name: 🔒 PR Gate — Critical Tests
+
+# This workflow acts as a merge gate on every PR targeting main.
+# Only @critical-tagged tests run here — they are fast but must pass
+# before the PR is allowed to merge (enforced via branch protection rules).
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  critical-gate:
+    name: 🔒 Critical Test Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: playwright install chromium --with-deps
+
+      - name: 🔒 Run critical tests only
+        run: |
+          pytest tests/ -v \
+            -m critical \
+            --html=reports/pr-gate.html \
+            --self-contained-html
+        env:
+          HEADLESS: "true"
+          STANDARD_USER: ${{ secrets.STANDARD_USER || 'standard_user' }}
+          PASSWORD: ${{ secrets.PASSWORD || 'secret_sauce' }}
+
+      - name: 📤 Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-gate-report
+          path: reports/pr-gate.html
+          retention-days: 14

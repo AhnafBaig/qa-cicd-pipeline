@@ -1,0 +1,136 @@
+name: 🔁 Regression Suite
+
+on:
+  # Nightly at 2 AM UTC
+  schedule:
+    - cron: "0 2 * * *"
+
+  # Manually trigger from the Actions tab with options
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: "Test layer to run"
+        required: true
+        default: "all"
+        type: choice
+        options: [all, ui, api, smoke]
+      headless:
+        description: "Run browser headless?"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+# Cancel any in-progress run when a new one starts
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Stage 1: API regression (no browser needed, runs fast) ────────────────
+  api-regression:
+    name: 🌐 API Regression
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.layer == 'all' ||
+      github.event.inputs.layer == 'api'  ||
+      github.event_name == 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 🌐 Run API regression tests
+        run: |
+          pytest tests/api/ -v \
+            -m "api or regression" \
+            --html=reports/api-regression.html \
+            --self-contained-html \
+            -n auto
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL || 'https://jsonplaceholder.typicode.com' }}
+
+      - name: 📤 Upload API report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-regression-report
+          path: reports/api-regression.html
+          retention-days: 30
+
+  # ── Stage 2: UI regression (depends on API passing) ───────────────────────
+  ui-regression:
+    name: 🖥️ UI Regression
+    runs-on: ubuntu-latest
+    needs: api-regression           # Won't start if API tests failed
+    if: |
+      github.event.inputs.layer == 'all' ||
+      github.event.inputs.layer == 'ui'  ||
+      github.event_name == 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: playwright install chromium --with-deps
+
+      - name: 🖥️ Run UI regression tests
+        run: |
+          pytest tests/ui/ -v \
+            -m "ui or regression" \
+            --html=reports/ui-regression.html \
+            --self-contained-html
+        env:
+          HEADLESS: ${{ github.event.inputs.headless || 'true' }}
+          STANDARD_USER: ${{ secrets.STANDARD_USER }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          UI_BASE_URL: ${{ vars.UI_BASE_URL || 'https://www.saucedemo.com' }}
+
+      - name: 📤 Upload UI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-regression-report
+          path: reports/ui-regression.html
+          retention-days: 30
+
+      # Save a screenshot on failure for debugging
+      - name: 📸 Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: screenshots/
+          retention-days: 7
+
+  # ── Stage 3: Publish consolidated summary ─────────────────────────────────
+  publish-summary:
+    name: 📊 Publish Run Summary
+    runs-on: ubuntu-latest
+    needs: [api-regression, ui-regression]
+    if: always()
+
+    steps:
+      - name: 📊 Write job summary
+        run: |
+          echo "## 🔁 Regression Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Layer | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🌐 API | ${{ needs.api-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🖥️ UI  | ${{ needs.ui-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📅 Run triggered by: \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [Download reports](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY

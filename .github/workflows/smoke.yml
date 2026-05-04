@@ -1,0 +1,71 @@
+name: 🚦 Smoke Tests
+
+on:
+  push:
+    branches: ["**"]          # Every branch, every push
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  smoke:
+    name: Smoke — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    # Run smoke on both Ubuntu AND Windows to catch cross-platform issues
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 📦 Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: 🎭 Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: 🚦 Run smoke suite
+        run: |
+          pytest tests/smoke/ -v \
+            -m smoke \
+            --html=reports/smoke-${{ matrix.os }}.html \
+            --self-contained-html
+        env:
+          HEADLESS: "true"
+          STANDARD_USER: ${{ secrets.STANDARD_USER || 'standard_user' }}
+          PASSWORD: ${{ secrets.PASSWORD || 'secret_sauce' }}
+
+      - name: 📤 Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-${{ matrix.os }}
+          path: reports/smoke-${{ matrix.os }}.html
+          retention-days: 7
+
+      # Post a summary directly into the PR comment thread
+      - name: 💬 Post result summary to PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ job.status }}';
+            const emoji = outcome === 'success' ? '✅' : '❌';
+            const body = `## ${emoji} Smoke Tests — ${outcome.toUpperCase()} (\`${{ matrix.os }}\`)
+            > Triggered by commit \`${{ github.sha }}\`
+            Download the full report from the [Actions artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
